@@ -17,3 +17,9 @@ gulp
   .task('start', ['build'], shell.task([
     'nterm'
   ]))
+  .task('repl', ['build'], shell.task([
+    'nash'
+  ]))
+  .task('test', ['build'], shell.task([
+    'npm test'
+  ]))

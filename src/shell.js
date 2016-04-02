@@ -1,10 +1,10 @@
 'use strict';
-const which = require('which');
-const glob = require('glob');
-const fs = require('fs');
-const path = require('path');
-let { execFile, spawn }= require('child_process');
-let { EventEmitter } = require('events');
+import which from 'which';
+import glob from 'glob';
+import fs from 'fs';
+import path from 'path';
+import { execFile, spawn } from 'child_process';
+import { EventEmitter } from 'events';
 
 class DirStack {
   constructor (dir) {
@@ -68,6 +68,10 @@ class Process extends EventEmitter {
       this.emit('close', code);
     })
   }
+
+  input (data) {
+    return this.inner.stdin.write(data)
+  }
 }
 
 class Shell {
@@ -89,16 +93,22 @@ class Shell {
     return cb(null, this.dirStack.top());
   }
 
-  cd (newDir, cb) {
+  chdir (newDir, cb) {
     let cwd = this.dirStack.top();
     if (newDir == cwd)
       return cb();
+    if (newDir == '-') {
+      this.dirStack.pop();
+      this.env.PWD = this.dirStack.top();
+      return cb();
+    }
     let destPath = path.resolve(cwd, newDir);
     fs.stat(destPath, (err, stat) => {
       if (err)
         return cb(err);
       if (stat.isDirectory()) {
         this.dirStack.push(destPath);
+        this.env.PWD = destPath;
         return cb();
       }
       return cb(new Error("Shell.cd:not_a_directory: " + destPath));

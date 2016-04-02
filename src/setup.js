@@ -1,6 +1,3 @@
-'use strict';
-var fs = require('fs');
-var path = require('path');
 
 function init (app, config) {
   app.set('view engine', 'jade');

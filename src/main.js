@@ -1,18 +1,22 @@
 'use strict';
-var express = require('express');
-var setup = require('./setup');
-var opener = require('opener');
+import express from 'express';
+import setup from './setup';
+import opener from 'opener';
+import Config from './config';
 
-function run(config) {
-  var app = express();
-  setup.init(app, config);
-  app.listen(config.port);
-  opener('http://localhost:' + config.port);
+function run(options) {
+  Config.initialize((err, config) => {
+    if (err) {
+      console.error(err);
+      process.exit(-1);
+    }
+    var app = express();
+    setup.init(app, optionsoptions);
+    app.listen(options.port);
+    opener('http://localhost:' + options.port);
+  })
 }
 
-function foo() {
-  
-}
 module.exports = {
   run: run
 };

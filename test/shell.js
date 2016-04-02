@@ -1,6 +1,6 @@
-const Shell = require('../src/shell');
-let { assert } = require('chai');
-const path = require('path');
+import Shell from '../src/shell';
+import { assert } from 'chai';
+import path from 'path';
 
 describe('shell test', () => {
   var shell;
