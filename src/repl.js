@@ -7,9 +7,13 @@ import History from './history';
 import os from 'os';
 import path from 'path';
 import Command from './command';
+import uuid from 'uuid';
+import Promise from 'bluebird';
 
 class Repl {
   constructor (options) {
+    console.log('Repl.ctor', options)
+    this.options = options
     this.shell = new Shell(options)
     let customEval = (cmd, context, filename, cb) => {
       this.eval(cmd, context, filename, cb)
@@ -20,8 +24,37 @@ class Repl {
       useColors: true,
       eval: customEval
     })
-    this.historyPath = path.join(os.homedir(), '.nterm', 'test.history.log')
-    this.history = new History(this.replServer, this.historyPath)
+    this.replServer.defineCommand('hello', {
+      help: 'Say Hello',
+      action: (name) => {
+        setImmediate(() => {
+          this.replServer.outputStream.write("Hello, " + name + "\n");
+          this.replServer.displayPrompt()
+        })
+      }
+    })
+    this.replServer.defineCommand('session', {
+      help: 'Set session to a particular point',
+      action: (name) => {
+        this.setHistory(name, (err) => {
+          if (err) {
+            this.replServer.outputStream.write("ERROR: " + err.stack)
+            this.replServer.displayPrompt()
+          } else {
+            this.replServer.outputStream.write("session = " + name + "\n")
+            this.replServer.displayPrompt()
+          }
+        })
+      }
+    })
+  }
+
+  setHistory (name, cb) {
+    this.sessionName = name;
+    this.historyPath = path.join(os.homedir(), '.nterm', 'history', this.sessionName + '.log')
+    if (!this.history)
+      this.history = new History(this.replServer, this.historyPath)
+    this.history.setFilePath(this.historyPath, cb)
   }
 
   eval (cmd, context, filename, cb) {
@@ -39,8 +72,15 @@ class Repl {
     }
   }
 
-  init (cb) {
-    this.history.load(cb)
+  initialize (cb) {
+    this.setHistoryAsync(this.options.session)
+      .then(() => {
+        return this.history.initializeAsync();
+      })
+      .then(() => {
+        return cb()
+      })
+      .catch(cb)
   }
 }
 
@@ -51,7 +91,7 @@ function run(options) {
       process.exit(-1)
     }
     let shellRepl = new Repl(options)
-    shellRepl.init((err) => {
+    shellRepl.initialize((err) => {
       if (err) {
         console.error('shell.repl.init.ERROR', err)
         process.exit(-1)
@@ -59,6 +99,8 @@ function run(options) {
     })
   })
 }
+
+Promise.promisifyAll(Repl.prototype)
 
 module.exports = {
   run: run
