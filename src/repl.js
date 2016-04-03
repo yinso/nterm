@@ -31,7 +31,6 @@ class Repl {
         if (err)
           cb(err)
         else {
-          console.log(util.inspect(this.shell.env, { depth: null, colors: true }))
           cb()
         }
       })

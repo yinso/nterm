@@ -30,7 +30,6 @@ class History {
         return cb(err)
       try {
         data = data.trim().split('\n').join(',')
-        console.log('History.load', data)
         let history = JSON.parse('[' + data + ']')
         this.repl.rli.history = history.map((item) => {
           return item.cmd;

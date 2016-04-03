@@ -47,7 +47,7 @@ class Command {
       case 'pwd':
         return new PwdCommand(shell);
       default:
-        throw new Error("Command:buildCommand:unsupported_command: " + parsed.command.command)
+        return new ExecCommand(shell, parsed.command.value, parsed.args.map((arg) => { return arg.value }))
     }
   }
 }
@@ -94,6 +94,19 @@ class CdCommand extends Command {
 
   exec(cb) {
     this.shell.chdir(this.destDir, cb)
+  }
+}
+
+class ExecCommand extends Command {
+  constructor (shell, program, args, env) {
+    super(shell)
+    this.program = program;
+    this.args = args;
+    this.env = env;
+  }
+
+  exec(cb) {
+    this.shell.exec(this.program, this.args, cb)
   }
 }
 

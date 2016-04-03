@@ -127,7 +127,6 @@ class Shell {
         cwd: this.dirStack.top(),
         env: this.env
       }, (err, stdout, stderr) => {
-        console.log('Shell.exec.results', err, stdout, stderr);
         console.log(stdout)
         console.error(stderr)
         return cb(err);
