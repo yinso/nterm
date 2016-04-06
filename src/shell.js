@@ -1,10 +1,13 @@
 'use strict';
 import which from 'which';
 import glob from 'glob';
-import fs from 'fs';
+import fs from './fs';
 import path from 'path';
 import { execFile, spawn } from 'child_process';
 import { EventEmitter } from 'events';
+import jsYaml from 'js-yaml';
+import _ from 'lodash';
+import Promise from 'bluebird';
 
 class DirStack {
   constructor (dir) {
@@ -53,8 +56,15 @@ class Process extends EventEmitter {
     }
     this.inner = spawn(this.cmd, this.args, {
       cwd: this.cwd,
-      env: this.env
+      env: this.env,
+      stdio: options.stdio || 'inherit'
     });
+    if (options.stdio == 'pipe') {
+      this.inner.stdout.pipe(process.stdout)
+      this.inner.stderr.pipe(process.stderr)
+      process.stdin.pipe(this.inner.stdin)
+    }
+    /*
     this.inner.stdout.on('data', (data) => {
       console.log('stdout.data', data)
       this.emit('stdout', data);
@@ -62,9 +72,9 @@ class Process extends EventEmitter {
     this.inner.stderr.on('data', (data) => {
       console.error('stderr.data', data)
       this.emit('stderr', data);
-    })
+    }) //*/
     this.inner.on('close', (code) => {
-      console.log('process.done', code);
+      //console.log('process.done', code);
       this.emit('close', code);
     })
   }
@@ -75,10 +85,49 @@ class Process extends EventEmitter {
 }
 
 class Shell {
-  constructor (options) {
-    this.options = options || {};
-    this.env = this.options.env || process.env;
-    this.dirStack = new DirStack(this.options.pwd || process.cwd());
+  constructor (config, options = {}) {
+    this.config = config;
+    this.env = options.env || process.env || {};
+    this.dirStack = new DirStack(this.env.PWD || process.cwd());
+    this.stdin = options.stdin || process.stdin;
+    this.stdout = options.stdout || process.stdout;
+    this.stderr = options.stderr || process.stderr;
+  }
+
+  get readline () {
+    return this._rli;
+  }
+
+  set readline (val) {
+    this._rli = val
+  }
+
+  loadProfile (cb) {
+    //console.log('Shell.loadProfile', this.config)
+    fs.readFileAsync(this.config.profilePath, 'utf8')
+      .then((data) => {
+        var parsed = jsYaml.safeLoad(data)
+        this.env = _.extend(this.env, parsed.env || {})
+        return this.chdirAsync(this.env.PWD)
+      })
+      .then(() => {
+        return cb()
+      })
+      .catch((e) => {
+        return cb(null, this)
+      })
+  }
+
+  saveProfile (cb) {
+    try {
+      let profile = {
+        cwd: this.cwd(),
+        env: this.env
+      };
+      fs.writeFile(this.config.profilePath, jsYaml.safeDump(profile), 'utf8', cb)
+    } catch (e) {
+      return cb(e)
+    }
   }
 
   which (cmd, cb) {
@@ -120,18 +169,21 @@ class Shell {
       cb = args;
       args = [];
     }
-    which(cmd, (err, cmdFile) => {
-      if (err)
-        return cb(err)
-      execFile(cmdFile, args, {
-        cwd: this.dirStack.top(),
-        env: this.env
-      }, (err, stdout, stderr) => {
-        console.log(stdout)
-        console.error(stderr)
-        return cb(err);
-      })
+    this.spawnAsync(cmd, args, {
+      close: (code) => {
+        //console.log('process.closed', cmd)
+        this.readline.resume() //
+        if (code != 0) {
+          return cb(new Error("process.close.error: " + code))
+        } else {
+          return cb()
+        }
+      }
     })
+      .then((proc) => {
+        return
+      })
+      .catch(cb)
   }
 
   spawn(cmd, args, options, cb) {
@@ -146,11 +198,13 @@ class Shell {
     which(cmd, (err, cmdFile) => {
       if (err)
         return cb(err);
+      this.readline.pause()
       return cb(null, new Process({
         cmd: cmdFile,
         cwd: this.cwd(),
         env: this.env,
         args: args,
+        stdio: 'inherit',
         stdout: options.stdout,
         stderr: options.stderr,
         close: options.close
@@ -158,5 +212,7 @@ class Shell {
     })
   }
 }
+
+Promise.promisifyAll(Shell.prototype)
 
 module.exports = Shell

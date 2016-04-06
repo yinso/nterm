@@ -1,10 +1,7 @@
-import mv from 'mv'
-import fs from 'fs'
+import fs from './fs'
 import path from 'path'
-import touchp from 'touchp'
 import Promise from 'bluebird'
-
-Promise.promisifyAll(fs)
+import jsYaml from 'js-yaml'
 
 class History {
   constructor (repl, filePath) {
@@ -30,31 +27,22 @@ class History {
   }
 
   appendFile (obj, cb) {
-    let data = JSON.stringify(obj) + '\n'
+    let data = jsYaml.safeDump([ obj ])
     fs.appendFileAsync(this.filePath, data, 'utf8')
       .then(() => {
         return cb()
       })
-      .catch((e) => {
-        touchp(this.filePath, (e) => {
-          if (e)
-            return cb(e)
-          else {
-            return this.appendFile(obj, cb)
-          }
-        })
-      })
+      .catch(cb)
   }
 
   log(code, cb) {
-    console.log('History.log', code)
     this.appendFile({cmd: code, ts: new Date()}, cb)
   }
 
   load (cb) {
     fs.readFileAsync(this.filePath, 'utf8')
       .then((data) => {
-        let history = JSON.parse('[' + data.trim().split('\n').join(',') + ']')
+        let history = jsYaml.safeLoad(data)
         this.repl.rli.history = history.map((item) => {
           return item.cmd;
         }).reverse()

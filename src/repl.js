@@ -9,12 +9,19 @@ import path from 'path';
 import Command from './command';
 import uuid from 'uuid';
 import Promise from 'bluebird';
+import fs from './fs';
+import jsYaml from 'js-yaml';
 
+/**
+ * Represents the REPL of the shell
+ * @param {Object} options
+ * @param {string} options.appName - The name of the program. Used for determining the location of the config as well (nterm -> ~/.nterm)
+ * @param {string} options.session - the name of the session, defaults to "default"
+ */
 class Repl {
   constructor (options) {
-    console.log('Repl.ctor', options)
-    this.options = options
-    this.shell = new Shell(options)
+    this.config = new Config(options)
+    this.shell = new Shell(this.config, {}) // shell will store itself
     let customEval = (cmd, context, filename, cb) => {
       this.eval(cmd, context, filename, cb)
     }
@@ -24,15 +31,7 @@ class Repl {
       useColors: true,
       eval: customEval
     })
-    this.replServer.defineCommand('hello', {
-      help: 'Say Hello',
-      action: (name) => {
-        setImmediate(() => {
-          this.replServer.outputStream.write("Hello, " + name + "\n");
-          this.replServer.displayPrompt()
-        })
-      }
-    })
+    this.shell.readline = this.replServer.rli;
     this.replServer.defineCommand('session', {
       help: 'Set session to a particular point',
       action: (name) => {
@@ -47,11 +46,37 @@ class Repl {
         })
       }
     })
+    this.replServer.defineCommand('exit', {
+      help: 'Exit',
+      action: () => {
+        console.log('exit...')
+        this.shutdown((e) => {
+          if (e) {
+            console.error(e.stack)
+            process.exit(-1)
+          } else {
+            process.exit(0)
+          }
+        })
+      }
+    })
+    process.on('SIGNINT', () => {
+      this.shutdown((e) => {
+        if (e) {
+          console.error(e.stack)
+          process.exit(-1)
+        } else {
+          console.error('bye.')
+          process.exit()
+        }
+      })
+    })
   }
 
   setHistory (name, cb) {
     this.sessionName = name;
-    this.historyPath = path.join(os.homedir(), '.nterm', 'history', this.sessionName + '.log')
+    this.historyPath = this.config.historyPath;
+    //console.log('Repl.setHistory', this.config, this.config.historyPath)
     if (!this.history)
       this.history = new History(this.replServer, this.historyPath)
     this.history.setFilePath(this.historyPath, cb)
@@ -73,7 +98,10 @@ class Repl {
   }
 
   initialize (cb) {
-    this.setHistoryAsync(this.options.session)
+    this.shell.loadProfileAsync()
+      .then(() => {
+        return this.setHistoryAsync(this.config.profile)
+      })
       .then(() => {
         return this.history.initializeAsync();
       })
@@ -82,21 +110,24 @@ class Repl {
       })
       .catch(cb)
   }
+
+  shutdown (cb) {
+    this.shell.saveProfileAsync()
+      .then(() => {
+        return cb()
+      })
+      .catch(cb)
+  }
 }
 
 function run(options) {
-  Config.initialize((err, config) => {
+  //console.log('isTTY?', process.stdin);
+  let shellRepl = new Repl(options)
+  shellRepl.initialize((err) => {
     if (err) {
-      console.error(err);
+      console.error('shell.repl.init.ERROR', err.stack)
       process.exit(-1)
     }
-    let shellRepl = new Repl(options)
-    shellRepl.initialize((err) => {
-      if (err) {
-        console.error('shell.repl.init.ERROR', err)
-        process.exit(-1)
-      }
-    })
   })
 }
 
