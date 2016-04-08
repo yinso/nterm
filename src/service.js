@@ -4,13 +4,10 @@ import Config from './config';
 import parse from 'shell-parse';
 import util from 'util';
 import History from './history';
-import os from 'os';
-import path from 'path';
 import Command from './command';
-import uuid from 'uuid';
 import Promise from 'bluebird';
-import fs from './fs';
-import jsYaml from 'js-yaml';
+import _ from 'lodash';
+import Process from './process'
 
 /**
  * Represents the REPL of the shell
@@ -32,6 +29,10 @@ class Repl {
       eval: customEval
     })
     this.shell.readline = this.replServer.rli;
+    this.replServer._complete = this.replServer.complete;
+    this.replServer.complete = (line, cb) => {
+      this.tabComplete(line, cb)
+    }
     this.replServer.defineCommand('session', {
       help: 'Set session to a particular point',
       action: (name) => {
@@ -60,6 +61,7 @@ class Repl {
         })
       }
     })
+    /*
     process.on('SIGNINT', () => {
       this.shutdown((e) => {
         if (e) {
@@ -70,7 +72,17 @@ class Repl {
           process.exit()
         }
       })
+    })//*/
+    this.replServer.on('SIGINT', () => {
+      console.log('SIGINT called')
+      this.shell.handleSignal('SIGINT')
     })
+  }
+
+  tabComplete (line, cb) {
+    var list = ['hello', 'world', 'show', 'me'];
+    var filtered = _.filter(list, (item) => { return item.indexOf(line) > -1 });
+    return cb(null, [filtered, line])
   }
 
   setHistory (name, cb) {
@@ -118,21 +130,21 @@ class Repl {
       })
       .catch(cb)
   }
+
+  static run (options) {
+    //console.log('isTTY?', process.stdin);
+    let shellRepl = new Repl(options)
+    shellRepl.initialize((err) => {
+      if (err) {
+        console.error('shell.repl.init.ERROR', err.stack)
+        process.exit(-1)
+      }
+    })
+  }
 }
 
-function run(options) {
-  //console.log('isTTY?', process.stdin);
-  let shellRepl = new Repl(options)
-  shellRepl.initialize((err) => {
-    if (err) {
-      console.error('shell.repl.init.ERROR', err.stack)
-      process.exit(-1)
-    }
-  })
-}
+
 
 Promise.promisifyAll(Repl.prototype)
 
-module.exports = {
-  run: run
-}
+module.exports = Repl

@@ -8,6 +8,7 @@ import { EventEmitter } from 'events';
 import jsYaml from 'js-yaml';
 import _ from 'lodash';
 import Promise from 'bluebird';
+import Process from './process';
 
 class DirStack {
   constructor (dir) {
@@ -37,50 +38,28 @@ class DirStack {
   }
 }
 
-class Process extends EventEmitter {
-  constructor (options) {
-    super();
-    this.options = options || {};
-    this.cmd = this.options.cmd;
-    this.args = this.options.args || [];
-    this.env = this.options.env || process.env;
-    this.cwd = this.options.cwd || process.cwd();
-    if (this.options.stdout) {
-      this.on('stdout', this.options.stdout);
-    }
-    if (this.options.stderr) {
-      this.on('stderr', this.options.stderr);
-    }
-    if (this.options.close) {
-      this.on('close', this.options.close)
-    }
-    this.inner = spawn(this.cmd, this.args, {
-      cwd: this.cwd,
-      env: this.env,
-      stdio: options.stdio || 'inherit'
-    });
-    if (options.stdio == 'pipe') {
-      this.inner.stdout.pipe(process.stdout)
-      this.inner.stderr.pipe(process.stderr)
-      process.stdin.pipe(this.inner.stdin)
-    }
-    /*
-    this.inner.stdout.on('data', (data) => {
-      console.log('stdout.data', data)
-      this.emit('stdout', data);
+import readline from 'readline'
+
+class BackgroundListener extends EventEmitter {
+  constructor (options = {}) {
+    super()
+    this.rli = readline.createInterface({
+      input: options.stdin || process.stdin,
+      output: options.stdout || process.stdout,
+      terminal: true
     })
-    this.inner.stderr.on('data', (data) => {
-      console.error('stderr.data', data)
-      this.emit('stderr', data);
-    }) //*/
-    this.inner.on('close', (code) => {
-      //console.log('process.done', code);
-      this.emit('close', code);
+    this.rli.on('SIGINT', () => {
+      this.emit('SIGINT')
     })
   }
-
-  input (data) {
-    return this.inner.stdin.write(data)
+  pause () {
+    this.rli.pause()
+  }
+  resume () {
+    this.rli.resume()
+  }
+  close () {
+    this.rli.close()
   }
 }
 
@@ -171,8 +150,7 @@ class Shell {
     }
     this.spawnAsync(cmd, args, {
       close: (code) => {
-        //console.log('process.closed', cmd)
-        this.readline.resume() //
+        delete this.fgJob;
         if (code != 0) {
           return cb(new Error("process.close.error: " + code))
         } else {
@@ -181,6 +159,7 @@ class Shell {
       }
     })
       .then((proc) => {
+        this.fgJob = proc;
         return
       })
       .catch(cb)
@@ -198,18 +177,34 @@ class Shell {
     which(cmd, (err, cmdFile) => {
       if (err)
         return cb(err);
-      this.readline.pause()
       return cb(null, new Process({
         cmd: cmdFile,
         cwd: this.cwd(),
         env: this.env,
         args: args,
         stdio: 'inherit',
-        stdout: options.stdout,
-        stderr: options.stderr,
+        stdin: options.stdin || process.stdin,
+        stdout: options.stdout || process.stdout,
+        stderr: options.stderr || process.stderr,
         close: options.close
       }))
     })
+  }
+
+  handleSIGINT(cb) {
+    if (this.fgJob) {
+      this.fgJob.handle('SIGINT')
+    }
+  }
+
+  handleSignal(signal, cb = () => {}) {
+    switch (signal) {
+      case 'SIGINT':
+        this.handleSIGINT(cb)
+        break;
+      default:
+        cb();
+    }
   }
 }
 
